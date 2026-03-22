@@ -60,4 +60,4 @@ const postSchema = new Schema<IPost>(
   },
 );
 
-export const User = mongoose.model<IPost, PostModel>("Post", postSchema);
+export const Post = mongoose.model<IPost, PostModel>("Post", postSchema);

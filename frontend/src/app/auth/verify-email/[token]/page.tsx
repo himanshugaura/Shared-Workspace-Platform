@@ -180,7 +180,7 @@ export default function VerifyEmail() {
                       "hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08),inset_0_1px_0_0_rgba(255,255,255,0.12),0_8px_32px_rgba(0,0,0,0.4)]",
                       "flex items-center justify-center gap-2"
                     )}
-                  >
+                  > 
                     Back to Home
                     <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
                   </button>

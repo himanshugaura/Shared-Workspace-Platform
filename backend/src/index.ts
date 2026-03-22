@@ -6,11 +6,13 @@ import dotenv from "dotenv";
 import { globalErrorHandler } from "./utils/globalErrorHandler.js";
 import { connectDB } from "./config/database.js";
 import authRoutes from "./routes/auth.routes.js";
-
+import cookieParser from "cookie-parser";
 dotenv.config();
 
 const app: Express = express();
 const PORT = process.env.PORT || 5000;
+
+app.use(cookieParser());
 
 app.use(
   cors({
@@ -18,6 +20,7 @@ app.use(
     credentials: true,
   })
 );
+
 app.use(express.json());
 app.use("/api/auth" , authRoutes);
 const startServer = async () => {

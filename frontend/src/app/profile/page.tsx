@@ -1,111 +1,65 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Navbar from "@/components/common/Navbar";
 import Footer from "@/components/landingPage/Footer";
+import { Portfolio, User } from "@/types/entity.types";
+import { useAppDispatch } from "@/store/hook";
+import { getProfile, updateProfile, verifyUsername } from "@/api/auth";
+import Unverified from "@/components/auth/Unverified";
+import ImageCropUpload from "@/components/profile/CropModal";
+import { useSelector } from "react-redux";
+import { RootState } from "@/store/store";
 
-type Experience = {
+type UsernameStatus = "idle" | "checking" | "available" | "taken" | "error";
+
+const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
+const DEBOUNCE_MS = 600;
+
+type ProfileExperience = {
   company: string;
   role: string;
-  from: string; 
-  to: string | "Present";
+  from: Date | string;
+  to?: Date | string;
+  isCurrent: boolean;
   description: string;
 };
 
-type Education = {
+type ProfileEducation = {
   institution: string;
   degree: string;
-  duration: string;
+  from: Date | string;
+  to: Date | string;
   score: number;
   maxScore: number;
 };
 
-type Certification = {
-  name: string;
-  issuer: string;
-  date: string;
-  image: {
-    url: string;
-    publicId: string;
-  };
+type ProfileCertification = Portfolio["certifications"][number];
+
+type ProfilePortfolio = Omit<Portfolio, "experience" | "education" | "certifications"> & {
+  experience: ProfileExperience[];
+  education: ProfileEducation[];
+  certifications: ProfileCertification[];
 };
 
-type ProfileData = {
-  name: string;
-  username: string;
-  email: string;
-  profileImage: {
-    url: string;
-    publicId: string;
-  };
-  skills: string[];
-  experience: Experience[];
-  education: Education[];
-  certifications: Certification[];
-  achievements: string[];
+type ProfileUser = Omit<User, "portfolio"> & {
+  portfolio: ProfilePortfolio;
 };
 
-const initialData: ProfileData = {
-  name: "Himanshu Gaura",
-  username: "himanshugaura",
-  email: "himanshu@example.com",
-  profileImage: {
-    url: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=800&q=80&auto=format&fit=crop",
-    publicId: "users/himanshu/profile",
-  },
-  skills: [
-    "TypeScript",
-    "React",
-    "Next.js",
-    "Node.js",
-    "PostgreSQL",
-    "Tailwind CSS",
-    "System Design",
-  ],
-  experience: [
-    {
-      company: "Acme Labs",
-      role: "Frontend Engineer",
-      from: "2023-06-01",
-      to: "Present",
-      description:
-        "Built scalable UI architecture for community platform, improved page performance, and shipped rich editor + collaboration experiences.",
-    },
-    {
-      company: "Nova Tech",
-      role: "Software Engineer Intern",
-      from: "2022-01-01",
-      to: "2022-05-31",
-      description:
-        "Developed internal dashboards, added analytics tracking, and wrote reusable design system components.",
-    },
-  ],
-  education: [
-    {
-      institution: "National Institute of Technology",
-      degree: "B.Tech in Computer Science",
-      duration: "2019 - 2023",
-      score: 8.7,
-      maxScore: 10,
-    },
-  ],
-  certifications: [
-    {
-      name: "AWS Certified Cloud Practitioner",
-      issuer: "Amazon Web Services",
-      date: "2024-03-10",
-      image: {
-        url: "https://images.unsplash.com/photo-1516383740770-fbcc5ccbece0?w=1200&q=80&auto=format&fit=crop",
-        publicId: "cert/aws-ccp",
-      },
-    },
-  ],
-  achievements: [
-    "Winner - Smart India Hackathon regional round",
-    "Top 2% in coding contest (2,000+ participants)",
-    "Built open-source component library with 500+ GitHub stars",
-  ],
-};
+function getUsernameState(status: UsernameStatus, message: string) {
+  switch (status) {
+    case "checking":
+      return { text: message || "Checking username...", color: "text-yellow-300 font-medium" };
+    case "available":
+      return { text: message || "Username is available", color: "text-green-300 font-medium" };
+    case "taken":
+      return { text: message || "Username is not available", color: "text-red-400 font-medium" };
+    case "error":
+      return { text: message || "Could not verify username", color: "text-red-400 font-medium" };
+    default:
+      return { text: "", color: "text-gray-400" };
+  }
+}
 
 function SectionCard({
   title,
@@ -123,9 +77,7 @@ function SectionCard({
       <div className="px-6 py-5 border-b border-[rgba(240,236,228,0.08)] flex items-start justify-between gap-4">
         <div>
           <h3 className="text-[16px] text-[#f0ece4] tracking-[0.02em]">{title}</h3>
-          {subtitle ? (
-            <p className="text-[12px] text-[rgba(240,236,228,0.35)] mt-1">{subtitle}</p>
-          ) : null}
+          {subtitle ? <p className="text-[12px] text-[rgba(240,236,228,0.35)] mt-1">{subtitle}</p> : null}
         </div>
         {action}
       </div>
@@ -139,182 +91,487 @@ function Input({
   onChange,
   placeholder,
   type = "text",
+  disabled = false,
 }: {
   value: string | number;
-  onChange: (v: string) => void;
+  onChange?: (v: string) => void;
   placeholder?: string;
   type?: React.HTMLInputTypeAttribute;
+  disabled?: boolean;
 }) {
   return (
     <input
       type={type}
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(e) => onChange?.(e.target.value)}
       placeholder={placeholder}
-      className="w-full px-4 py-3 text-[14px] bg-[rgba(255,255,255,0.02)] text-[#f0ece4] border border-[rgba(240,236,228,0.08)] rounded-xl placeholder:text-[rgba(240,236,228,0.25)] outline-none transition-all duration-200 focus:border-[rgba(240,236,228,0.2)] focus:bg-[rgba(255,255,255,0.04)]"
+      disabled={disabled}
+      className="w-full px-4 py-3 text-[14px] bg-[rgba(255,255,255,0.02)] text-[#f0ece4] border border-[rgba(240,236,228,0.08)] rounded-xl placeholder:text-[rgba(240,236,228,0.25)] outline-none transition-all duration-200 focus:border-[rgba(240,236,228,0.2)] focus:bg-[rgba(255,255,255,0.04)] disabled:opacity-70 disabled:cursor-not-allowed"
     />
   );
 }
 
 function Label({ children }: { children: React.ReactNode }) {
+  return <label className="text-[12px] uppercase tracking-[0.08em] text-[rgba(240,236,228,0.45)]">{children}</label>;
+}
+
+function ConfirmModal({
+  open,
+  title = "Are you sure?",
+  description = "This action cannot be undone.",
+  confirmText = "Remove",
+  cancelText = "Cancel",
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  title?: string;
+  description?: string;
+  confirmText?: string;
+  cancelText?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (!open) return null;
+
   return (
-    <label className="text-[12px] uppercase tracking-[0.08em] text-[rgba(240,236,228,0.45)]">
-      {children}
-    </label>
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative w-full max-w-md rounded-2xl border border-[rgba(240,236,228,0.12)] bg-[#121212] p-6 shadow-2xl">
+        <h3 className="text-[#f0ece4] text-lg">{title}</h3>
+        <p className="mt-2 text-sm text-[rgba(240,236,228,0.6)]">{description}</p>
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <button type="button" onClick={onCancel} className="px-4 py-2 rounded-lg border border-[rgba(240,236,228,0.18)] text-[rgba(240,236,228,0.8)] hover:bg-[rgba(240,236,228,0.08)]">{cancelText}</button>
+          <button type="button" onClick={onConfirm} className="px-4 py-2 rounded-lg border border-red-400/30 bg-red-500/15 text-red-300 hover:bg-red-500/25">{confirmText}</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
+const emptyUser: ProfileUser = {
+  id: "",
+  name: "",
+  username: "",
+  email: "",
+  password: "",
+  isVerified: true,
+  profileImage: { url: "", publicId: "" },
+  portfolio: { skills: [], experience: [], education: [], certifications: [], achievements: [] },
+};
+
+function toDateInput(value: Date | string | null | undefined): string {
+  if (!value) return "";
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
+function toDisplayDateDDMMYYYY(value: Date | string | null | undefined): string {
+  if (!value) return "";
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+const safeTrim = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+
+const normalizeDate = (value: Date | string | null | undefined): string => {
+  if (!value) return "";
+  const d = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString();
+};
+
+function normalizeUser(raw: User | null | undefined): ProfileUser {
+  const base = raw ?? ({} as User);
+
+  const normalizedExperience: ProfileExperience[] = (base.portfolio?.experience ?? []).map((exp) => {
+    const toVal = exp.to as unknown as Date | string | undefined;
+    const derivedCurrent =
+      Boolean((exp as { isCurrent?: boolean }).isCurrent) ||
+      (typeof toVal === "string" && toVal.toLowerCase() === "present");
+
+    return {
+      company: exp.company ?? "",
+      role: exp.role ?? "",
+      from: (exp.from as Date | string | undefined) ?? "",
+      to: derivedCurrent ? undefined : toVal,
+      isCurrent: derivedCurrent,
+      description: exp.description ?? "",
+    };
+  });
+
+  const normalizedEducation: ProfileEducation[] = (base.portfolio?.education ?? []).map((e) => ({
+    institution: (e.institution ?? "").toString(),
+    degree: (e.degree ?? "").toString(),
+    from: ((e as { from?: Date | string }).from ?? "") as Date | string,
+    to: ((e as { to?: Date | string }).to ?? "") as Date | string,
+    score: Number(e.score ?? 0),
+    maxScore: Number(e.maxScore ?? 0),
+  }));
+
+  const normalizedCertifications: ProfileCertification[] = (base.portfolio?.certifications ?? []).map((cert) => ({
+    ...cert,
+    date: toDateInput(cert.date),
+  }));
+
+  return {
+    ...emptyUser,
+    ...base,
+    profileImage: { ...emptyUser.profileImage, ...(base.profileImage ?? {}) },
+    portfolio: {
+      ...emptyUser.portfolio,
+      ...(base.portfolio ?? {}),
+      skills: base.portfolio?.skills ?? [],
+      experience: normalizedExperience,
+      education: normalizedEducation,
+      certifications: normalizedCertifications,
+      achievements: base.portfolio?.achievements ?? [],
+    },
+  };
+}
+
 export default function ProfilePage() {
-  const [data, setData] = useState<ProfileData>(initialData);
+  const dispatch = useAppDispatch();
+  const storeUser = useSelector((state: RootState) => state.auth.user);
+
+  const [data, setData] = useState<ProfileUser>(emptyUser);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const [profileImageFile, setProfileImageFile] = useState<File | null>(null);
   const [skillInput, setSkillInput] = useState("");
   const [achievementInput, setAchievementInput] = useState("");
+  const [formError, setFormError] = useState("");
+
+  const [confirmState, setConfirmState] = useState<{
+    open: boolean;
+    title?: string;
+    description?: string;
+    onConfirm?: () => void;
+  }>({ open: false });
+
+  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>("idle");
+  const [usernameMessage, setUsernameMessage] = useState("");
+  const [initialUsername, setInitialUsername] = useState("");
+
+  // Use redux store first. If no profile in store, fetch it.
+  useEffect(() => {
+    const bootstrap = async () => {
+      try {
+        setLoading(true);
+        if (!storeUser) {
+          await dispatch(getProfile() as never); // returns boolean
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    bootstrap();
+  }, [dispatch, storeUser]);
+
+  // Whenever store user changes, hydrate local editable state
+  useEffect(() => {
+    if (!storeUser) return;
+    const normalized = normalizeUser(storeUser as User);
+    setData(normalized);
+
+    const baseUsername = normalized.username.trim();
+    setInitialUsername(baseUsername);
+    if (baseUsername) {
+      setUsernameStatus("available");
+      setUsernameMessage("Current username");
+    } else {
+      setUsernameStatus("idle");
+      setUsernameMessage("");
+    }
+  }, [storeUser]);
+
+  useEffect(() => {
+    const trimmed = data.username.trim();
+    const initialTrimmed = initialUsername.trim();
+
+    if (!trimmed) {
+      setUsernameStatus("idle");
+      setUsernameMessage("");
+      return;
+    }
+
+    if (trimmed === initialTrimmed) {
+      setUsernameStatus("available");
+      setUsernameMessage("Current username");
+      return;
+    }
+
+    if (!USERNAME_REGEX.test(trimmed)) {
+      setUsernameStatus("error");
+      setUsernameMessage("Use 3-20 chars: letters, numbers, underscore.");
+      return;
+    }
+
+    setUsernameStatus("checking");
+    setUsernameMessage("Checking username...");
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const available = await verifyUsername(trimmed)();
+        if (cancelled) return;
+        if (available) {
+          setUsernameStatus("available");
+          setUsernameMessage("Username is available");
+        } else {
+          setUsernameStatus("taken");
+          setUsernameMessage("Username is not available");
+        }
+      } catch (error) {
+        if (cancelled) return;
+        console.error("verify username failed:", error);
+        setUsernameStatus("error");
+        setUsernameMessage("Error verifying username");
+      }
+    }, DEBOUNCE_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [data.username, initialUsername]);
+
+  const openConfirm = ({ title, description, onConfirm }: { title?: string; description?: string; onConfirm: () => void }) =>
+    setConfirmState({ open: true, title, description, onConfirm });
+
+  const closeConfirm = () => setConfirmState({ open: false, onConfirm: undefined });
+
+  const handleConfirm = () => {
+    confirmState.onConfirm?.();
+    closeConfirm();
+  };
 
   const profileCompletion = useMemo(() => {
     let score = 0;
     if (data.name) score += 10;
     if (data.username) score += 10;
     if (data.email) score += 10;
-    if (data.profileImage.url) score += 10;
-    if (data.skills.length) score += 15;
-    if (data.experience.length) score += 15;
-    if (data.education.length) score += 10;
-    if (data.certifications.length) score += 10;
-    if (data.achievements.length) score += 10;
+    if (data.profileImage?.url || profileImageFile) score += 10;
+    if (data.portfolio.skills.length) score += 15;
+    if (data.portfolio.experience.length) score += 15;
+    if (data.portfolio.education.length) score += 10;
+    if (data.portfolio.certifications.length) score += 10;
+    if (data.portfolio.achievements.length) score += 10;
     return Math.min(score, 100);
-  }, [data]);
+  }, [data, profileImageFile]);
+
+  const validateBeforeSubmit = (): string => {
+    for (let i = 0; i < data.portfolio.experience.length; i++) {
+      const exp = data.portfolio.experience[i];
+      if (!safeTrim(exp.company)) return `Experience #${i + 1}: company is required.`;
+      if (!safeTrim(exp.role)) return `Experience #${i + 1}: role is required.`;
+      if (!exp.from || !toDateInput(exp.from)) return `Experience #${i + 1}: from date is required.`;
+      if (!exp.isCurrent && (!exp.to || !toDateInput(exp.to))) return `Experience #${i + 1}: to date is required when not current.`;
+      if (!safeTrim(exp.description)) return `Experience #${i + 1}: description is required.`;
+    }
+
+    for (let i = 0; i < data.portfolio.education.length; i++) {
+      const edu = data.portfolio.education[i];
+      if (!safeTrim(edu.institution)) return `Education #${i + 1}: institution is required.`;
+      if (!safeTrim(edu.degree)) return `Education #${i + 1}: degree is required.`;
+      if (!edu.from || !toDateInput(edu.from)) return `Education #${i + 1}: from date is required.`;
+      if (!edu.to || !toDateInput(edu.to)) return `Education #${i + 1}: to date is required.`;
+      if (new Date(edu.to).getTime() < new Date(edu.from).getTime()) return `Education #${i + 1}: to date cannot be earlier than from date.`;
+      if (Number.isNaN(Number(edu.score))) return `Education #${i + 1}: score must be a valid number.`;
+      if (Number.isNaN(Number(edu.maxScore)) || Number(edu.maxScore) <= 0) return `Education #${i + 1}: max score must be greater than 0.`;
+    }
+
+    return "";
+  };
+
+  const canSaveProfile = useMemo(() => {
+    const hasName = data.name.trim() !== "";
+    const hasUsername = data.username.trim() !== "";
+    return hasName && hasUsername && usernameStatus === "available";
+  }, [data.name, data.username, usernameStatus]);
 
   const addSkill = () => {
     const val = skillInput.trim();
     if (!val) return;
-    if (data.skills.includes(val)) return setSkillInput("");
-    setData((prev) => ({ ...prev, skills: [...prev.skills, val] }));
+    if (data.portfolio.skills.includes(val)) return setSkillInput("");
+    setData((prev) => ({ ...prev, portfolio: { ...prev.portfolio, skills: [...prev.portfolio.skills, val] } }));
     setSkillInput("");
   };
 
-  const removeSkill = (skill: string) => {
-    setData((prev) => ({ ...prev, skills: prev.skills.filter((s) => s !== skill) }));
-  };
+  const removeSkill = (skill: string) =>
+    setData((prev) => ({ ...prev, portfolio: { ...prev.portfolio, skills: prev.portfolio.skills.filter((s) => s !== skill) } }));
 
   const addAchievement = () => {
     const val = achievementInput.trim();
     if (!val) return;
-    if (data.achievements.includes(val)) return setAchievementInput("");
-    setData((prev) => ({ ...prev, achievements: [...prev.achievements, val] }));
+    if (data.portfolio.achievements.includes(val)) return setAchievementInput("");
+    setData((prev) => ({ ...prev, portfolio: { ...prev.portfolio, achievements: [...prev.portfolio.achievements, val] } }));
     setAchievementInput("");
   };
 
-  const removeAchievement = (val: string) => {
-    setData((prev) => ({
-      ...prev,
-      achievements: prev.achievements.filter((a) => a !== val),
-    }));
-  };
+  const removeAchievement = (val: string) =>
+    setData((prev) => ({ ...prev, portfolio: { ...prev.portfolio, achievements: prev.portfolio.achievements.filter((a) => a !== val) } }));
 
   const addExperience = () => {
-    setData((prev) => ({
-      ...prev,
-      experience: [
-        ...prev.experience,
-        {
-          company: "",
-          role: "",
-          from: "",
-          to: "Present",
-          description: "",
-        },
-      ],
-    }));
+    const newExp: ProfileExperience = {
+      company: "",
+      role: "",
+      from: new Date(),
+      to: undefined,
+      isCurrent: true,
+      description: "",
+    };
+    setData((prev) => ({ ...prev, portfolio: { ...prev.portfolio, experience: [...prev.portfolio.experience, newExp] } }));
   };
 
-  const updateExperience = (idx: number, patch: Partial<Experience>) => {
+  const updateExperience = (idx: number, patch: Partial<ProfileExperience>) =>
     setData((prev) => ({
       ...prev,
-      experience: prev.experience.map((item, i) =>
-        i === idx ? { ...item, ...patch } : item
-      ),
+      portfolio: {
+        ...prev.portfolio,
+        experience: prev.portfolio.experience.map((item, i) => (i === idx ? { ...item, ...patch } : item)),
+      },
     }));
-  };
 
-  const removeExperience = (idx: number) => {
+  const removeExperience = (idx: number) =>
+    setData((prev) => ({ ...prev, portfolio: { ...prev.portfolio, experience: prev.portfolio.experience.filter((_, i) => i !== idx) } }));
+
+  const addEducation = () =>
     setData((prev) => ({
       ...prev,
-      experience: prev.experience.filter((_, i) => i !== idx),
+      portfolio: {
+        ...prev.portfolio,
+        education: [...prev.portfolio.education, { institution: "", degree: "", from: new Date(), to: new Date(), score: 0, maxScore: 10 }],
+      },
     }));
-  };
 
-  const addEducation = () => {
+  const updateEducation = (idx: number, patch: Partial<ProfileEducation>) =>
     setData((prev) => ({
       ...prev,
-      education: [
-        ...prev.education,
-        { institution: "", degree: "", duration: "", score: 0, maxScore: 10 },
-      ],
+      portfolio: {
+        ...prev.portfolio,
+        education: prev.portfolio.education.map((item, i) => (i === idx ? { ...item, ...patch } : item)),
+      },
     }));
-  };
 
-  const updateEducation = (idx: number, patch: Partial<Education>) => {
+  const removeEducation = (idx: number) =>
+    setData((prev) => ({ ...prev, portfolio: { ...prev.portfolio, education: prev.portfolio.education.filter((_, i) => i !== idx) } }));
+
+  const addCertification = () =>
     setData((prev) => ({
       ...prev,
-      education: prev.education.map((item, i) =>
-        i === idx ? { ...item, ...patch } : item
-      ),
+      portfolio: {
+        ...prev.portfolio,
+        certifications: [...prev.portfolio.certifications, { name: "", issuer: "", date: "", image: { url: "", publicId: "" } }],
+      },
     }));
-  };
 
-  const removeEducation = (idx: number) => {
+  const updateCertification = (idx: number, patch: Partial<ProfileCertification>) =>
     setData((prev) => ({
       ...prev,
-      education: prev.education.filter((_, i) => i !== idx),
+      portfolio: {
+        ...prev.portfolio,
+        certifications: prev.portfolio.certifications.map((item, i) => (i === idx ? { ...item, ...patch } : item)),
+      },
     }));
+
+  const removeCertification = (idx: number) =>
+    setData((prev) => ({ ...prev, portfolio: { ...prev.portfolio, certifications: prev.portfolio.certifications.filter((_, i) => i !== idx) } }));
+
+  const buildPayloadAsFormData = (user: ProfileUser, imageFile: File | null) => {
+    const formData = new FormData();
+
+    formData.append("name", safeTrim(user.name));
+    formData.append("username", safeTrim(user.username));
+    if (imageFile) formData.append("profileImage", imageFile);
+
+    const normalizedPortfolio = {
+      skills: user.portfolio.skills.map((s) => s.trim()).filter(Boolean),
+      experience: user.portfolio.experience.map((exp) => ({
+        company: safeTrim(exp.company),
+        role: safeTrim(exp.role),
+        from: normalizeDate(exp.from),
+        to: exp.isCurrent ? "" : normalizeDate(exp.to ?? ""),
+        isCurrent: exp.isCurrent,
+        description: safeTrim(exp.description),
+      })),
+      education: user.portfolio.education.map((edu) => ({
+        institution: safeTrim(edu.institution),
+        degree: safeTrim(edu.degree),
+        from: normalizeDate(edu.from),
+        to: normalizeDate(edu.to),
+        score: Number(edu.score ?? 0),
+        maxScore: Number(edu.maxScore ?? 0),
+      })),
+      certifications: user.portfolio.certifications.map((cert) => ({
+        name: safeTrim(cert.name),
+        issuer: safeTrim(cert.issuer),
+        date: cert.date ? new Date(cert.date).toISOString() : "",
+      })),
+      achievements: user.portfolio.achievements.map((a) => a.trim()).filter(Boolean),
+    };
+
+    formData.append("portfolio", JSON.stringify(normalizedPortfolio));
+    return formData;
   };
 
-  const addCertification = () => {
-    setData((prev) => ({
-      ...prev,
-      certifications: [
-        ...prev.certifications,
-        {
-          name: "",
-          issuer: "",
-          date: "",
-          image: { url: "", publicId: "" },
-        },
-      ],
-    }));
-  };
-
-  const updateCertification = (idx: number, patch: Partial<Certification>) => {
-    setData((prev) => ({
-      ...prev,
-      certifications: prev.certifications.map((item, i) =>
-        i === idx ? { ...item, ...patch } : item
-      ),
-    }));
-  };
-
-  const removeCertification = (idx: number) => {
-    setData((prev) => ({
-      ...prev,
-      certifications: prev.certifications.filter((_, i) => i !== idx),
-    }));
-  };
-
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Profile payload:", data);
+    setFormError("");
+
+    if (!canSaveProfile) return;
+
+    const validationError = validateBeforeSubmit();
+    if (validationError) {
+      setFormError(validationError);
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const formData = buildPayloadAsFormData(data, profileImageFile);
+      const ok = await dispatch(updateProfile(formData) as never);
+
+      if (!ok) {
+        setFormError("Failed to save profile. Please try again.");
+        return;
+      }
+
+      setProfileImageFile(null);
+      // store gets updated by service; local state re-hydrates from storeUser effect
+    } catch (err) {
+      console.error("Failed to save profile:", err);
+      setFormError("Failed to save profile. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const usernameUi = getUsernameState(usernameStatus, usernameMessage);
+
+  if (loading) {
+    return <div className="min-h-screen bg-[#0a0a0a] text-[#f0ece4] grid place-items-center">Loading profile...</div>;
+  }
+
+  if (!storeUser) {
+    return <div className="min-h-screen bg-[#0a0a0a] text-[#f0ece4] grid place-items-center">No profile found.</div>;
+  }
+
+  if (!data.isVerified) return <Unverified />;
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] font-['DM_Sans']">
       <Navbar />
 
       <main className="max-w-6xl mx-auto px-6 md:px-8 pt-10 pb-20">
-        {/* Header */}
         <div className="mb-8 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-[12px] uppercase tracking-[0.12em] text-[rgba(240,236,228,0.35)] mb-2">
-              Profile
-            </p>
+            <p className="text-[12px] uppercase tracking-[0.12em] text-[rgba(240,236,228,0.35)] mb-2">Profile</p>
             <h1 className="font-['Playfair_Display'] text-[clamp(30px,4.2vw,46px)] text-[#f0ece4] leading-[1.1] tracking-[-0.02em]">
               Professional Portfolio
             </h1>
@@ -325,234 +582,124 @@ export default function ProfilePage() {
 
           <div className="w-full max-w-sm rounded-2xl border border-[rgba(240,236,228,0.1)] bg-[rgba(255,255,255,0.02)] p-5">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-[12px] text-[rgba(240,236,228,0.4)] tracking-[0.08em] uppercase">
-                Profile Strength
-              </span>
+              <span className="text-[12px] text-[rgba(240,236,228,0.4)] tracking-[0.08em] uppercase">Profile Strength</span>
               <span className="text-[13px] text-[#f0ece4]">{profileCompletion}%</span>
             </div>
             <div className="h-2 rounded-full bg-[rgba(240,236,228,0.08)] overflow-hidden">
-              <div
-                className="h-full bg-linear-to-r from-emerald-400/70 via-sky-400/70 to-violet-400/70"
-                style={{ width: `${profileCompletion}%` }}
-              />
+              <div className="h-full bg-linear-to-r from-emerald-400/70 via-sky-400/70 to-violet-400/70" style={{ width: `${profileCompletion}%` }} />
             </div>
           </div>
         </div>
 
         <form onSubmit={handleSave} className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          {/* Left column */}
           <div className="xl:col-span-1 flex flex-col gap-6">
             <SectionCard title="Identity" subtitle="Core account details">
-              <div className="flex flex-col items-center gap-4 mb-6">
-                <div className="w-24 h-24 rounded-2xl overflow-hidden border border-[rgba(240,236,228,0.12)]">
-                  <img
-                    src={data.profileImage.url || "https://placehold.co/200x200?text=User"}
-                    alt="Profile"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div className="w-full">
-                  <Label>Profile Image URL</Label>
-                  <Input
-                    value={data.profileImage.url}
-                    onChange={(v) =>
-                      setData((prev) => ({
-                        ...prev,
-                        profileImage: { ...prev.profileImage, url: v },
-                      }))
-                    }
-                    placeholder="https://..."
-                  />
-                </div>
-                <div className="w-full">
-                  <Label>Profile Image Public ID</Label>
-                  <Input
-                    value={data.profileImage.publicId}
-                    onChange={(v) =>
-                      setData((prev) => ({
-                        ...prev,
-                        profileImage: { ...prev.profileImage, publicId: v },
-                      }))
-                    }
-                    placeholder="users/username/profile"
-                  />
-                </div>
+              <div className="mb-6">
+                <ImageCropUpload
+                  currentImageUrl={data.profileImage.url}
+                  onCroppedFile={(file) => {
+                    setProfileImageFile(file);
+                    setData((prev) => ({ ...prev, profileImage: { ...prev.profileImage, url: URL.createObjectURL(file) } }));
+                  }}
+                />
               </div>
 
               <div className="space-y-4">
                 <div>
                   <Label>Name</Label>
-                  <Input
-                    value={data.name}
-                    onChange={(v) => setData((prev) => ({ ...prev, name: v }))}
-                    placeholder="Your full name"
-                  />
+                  <Input value={data.name} onChange={(v) => setData((prev) => ({ ...prev, name: v }))} placeholder="Your full name" />
                 </div>
                 <div>
                   <Label>Username</Label>
-                  <Input
-                    value={data.username}
-                    onChange={(v) => setData((prev) => ({ ...prev, username: v }))}
-                    placeholder="@username"
-                  />
+                  <Input value={data.username} onChange={(v) => setData((prev) => ({ ...prev, username: v.replace(/\s+/g, "") }))} placeholder="@username" />
+                  {data.username.trim() !== "" && <p className={`text-[12px] mt-1 ${usernameUi.color}`}>{usernameUi.text}</p>}
                 </div>
                 <div>
                   <Label>Email</Label>
-                  <Input
-                    type="email"
-                    value={data.email}
-                    onChange={(v) => setData((prev) => ({ ...prev, email: v }))}
-                    placeholder="you@example.com"
-                  />
+                  <Input type="email" value={data.email} disabled />
                 </div>
               </div>
             </SectionCard>
 
             <SectionCard title="Skills" subtitle="What you’re best at">
               <div className="flex flex-wrap gap-2 mb-4">
-                {data.skills.map((skill) => (
-                  <span
-                    key={skill}
-                    className="inline-flex items-center gap-2 text-[12px] px-3 py-1.5 rounded-lg bg-[rgba(139,92,246,0.08)] text-[rgba(196,181,253,0.8)] border border-[rgba(139,92,246,0.22)]"
-                  >
+                {data.portfolio.skills.map((skill) => (
+                  <span key={skill} className="inline-flex items-center gap-2 text-[12px] px-3 py-1.5 rounded-lg bg-[rgba(139,92,246,0.08)] text-[rgba(196,181,253,0.8)] border border-[rgba(139,92,246,0.22)]">
                     {skill}
-                    <button
-                      type="button"
-                      onClick={() => removeSkill(skill)}
-                      className="text-[rgba(196,181,253,0.45)] hover:text-[rgba(196,181,253,0.95)]"
-                    >
-                      ✕
-                    </button>
+                    <button type="button" onClick={() => openConfirm({ title: "Remove skill?", description: `Are you sure you want to remove "${skill}"?`, onConfirm: () => removeSkill(skill) })} className="text-[rgba(196,181,253,0.45)] hover:text-[rgba(196,181,253,0.95)]">✕</button>
                   </span>
                 ))}
               </div>
               <div className="flex gap-2">
-                <Input
-                  value={skillInput}
-                  onChange={setSkillInput}
-                  placeholder="Add a skill"
-                />
-                <button
-                  type="button"
-                  onClick={addSkill}
-                  className="px-4 rounded-xl border border-[rgba(240,236,228,0.18)] text-[#f0ece4] bg-[rgba(240,236,228,0.1)] hover:bg-[rgba(240,236,228,0.16)] transition"
-                >
-                  Add
-                </button>
+                <Input value={skillInput} onChange={setSkillInput} placeholder="Add a skill" />
+                <button type="button" onClick={addSkill} className="px-4 rounded-xl border border-[rgba(240,236,228,0.18)] text-[#f0ece4] bg-[rgba(240,236,228,0.1)] hover:bg-[rgba(240,236,228,0.16)] transition">Add</button>
               </div>
             </SectionCard>
 
             <SectionCard title="Achievements" subtitle="Highlights that stand out">
               <div className="space-y-2 mb-4">
-                {data.achievements.map((a) => (
-                  <div
-                    key={a}
-                    className="flex items-start justify-between gap-3 text-[13px] text-[rgba(240,236,228,0.72)] px-3 py-2.5 rounded-lg border border-[rgba(240,236,228,0.08)] bg-[rgba(255,255,255,0.015)]"
-                  >
+                {data.portfolio.achievements.map((a) => (
+                  <div key={a} className="flex items-start justify-between gap-3 text-[13px] text-[rgba(240,236,228,0.72)] px-3 py-2.5 rounded-lg border border-[rgba(240,236,228,0.08)] bg-[rgba(255,255,255,0.015)]">
                     <span>• {a}</span>
-                    <button
-                      type="button"
-                      onClick={() => removeAchievement(a)}
-                      className="text-[rgba(240,236,228,0.35)] hover:text-[rgba(240,236,228,0.8)]"
-                    >
-                      ✕
-                    </button>
+                    <button type="button" onClick={() => openConfirm({ title: "Remove achievement?", description: "This achievement will be removed.", onConfirm: () => removeAchievement(a) })} className="text-[rgba(240,236,228,0.35)] hover:text-[rgba(240,236,228,0.8)]">✕</button>
                   </div>
                 ))}
               </div>
               <div className="flex gap-2">
-                <Input
-                  value={achievementInput}
-                  onChange={setAchievementInput}
-                  placeholder="Add achievement"
-                />
-                <button
-                  type="button"
-                  onClick={addAchievement}
-                  className="px-4 rounded-xl border border-[rgba(240,236,228,0.18)] text-[#f0ece4] bg-[rgba(240,236,228,0.1)] hover:bg-[rgba(240,236,228,0.16)] transition"
-                >
-                  Add
-                </button>
+                <Input value={achievementInput} onChange={setAchievementInput} placeholder="Add achievement" />
+                <button type="button" onClick={addAchievement} className="px-4 rounded-xl border border-[rgba(240,236,228,0.18)] text-[#f0ece4] bg-[rgba(240,236,228,0.1)] hover:bg-[rgba(240,236,228,0.16)] transition">Add</button>
               </div>
             </SectionCard>
           </div>
 
-          {/* Right column */}
           <div className="xl:col-span-2 flex flex-col gap-6">
             <SectionCard
               title="Experience"
               subtitle="Professional roles and contributions"
-              action={
-                <button
-                  type="button"
-                  onClick={addExperience}
-                  className="text-[12px] px-3 py-1.5 rounded-lg border border-[rgba(240,236,228,0.16)] text-[#f0ece4] bg-[rgba(240,236,228,0.08)] hover:bg-[rgba(240,236,228,0.14)]"
-                >
-                  + Add Experience
-                </button>
-              }
+              action={<button type="button" onClick={addExperience} className="text-[12px] px-3 py-1.5 rounded-lg border border-[rgba(240,236,228,0.16)] text-[#f0ece4] bg-[rgba(240,236,228,0.08)] hover:bg-[rgba(240,236,228,0.14)]">+ Add Experience</button>}
             >
               <div className="space-y-4">
-                {data.experience.map((exp, idx) => (
-                  <div
-                    key={idx}
-                    className="rounded-xl border border-[rgba(240,236,228,0.08)] bg-[rgba(255,255,255,0.01)] p-4"
-                  >
+                {data.portfolio.experience.map((exp, idx) => (
+                  <div key={idx} className="rounded-xl border border-[rgba(240,236,228,0.08)] bg-[rgba(255,255,255,0.01)] p-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div><Label>Company</Label><Input value={exp.company} onChange={(v) => updateExperience(idx, { company: v })} placeholder="Company name" /></div>
+                      <div><Label>Role</Label><Input value={exp.role} onChange={(v) => updateExperience(idx, { role: v })} placeholder="Role / title" /></div>
+                      <div><Label>From</Label><Input type="date" value={toDateInput(exp.from)} onChange={(v) => updateExperience(idx, { from: v ? new Date(v) : new Date() })} /></div>
                       <div>
-                        <Label>Company</Label>
-                        <Input
-                          value={exp.company}
-                          onChange={(v) => updateExperience(idx, { company: v })}
-                          placeholder="Company name"
-                        />
+                        <Label>To Type</Label>
+                        <select
+                          value={exp.isCurrent ? "present" : "date"}
+                          onChange={(e) => {
+                            const mode = e.target.value as "present" | "date";
+                            if (mode === "present") updateExperience(idx, { isCurrent: true, to: undefined });
+                            else updateExperience(idx, { isCurrent: false, to: new Date() });
+                          }}
+                          className="w-full px-4 py-3 text-[14px] bg-[rgba(255,255,255,0.02)] text-[#f0ece4] border border-[rgba(240,236,228,0.08)] rounded-xl outline-none transition-all duration-200 focus:border-[rgba(240,236,228,0.2)] focus:bg-[rgba(255,255,255,0.04)]"
+                        >
+                          <option value="present" className="bg-[#121212]">Present</option>
+                          <option value="date" className="bg-[#121212]">Date</option>
+                        </select>
                       </div>
-                      <div>
-                        <Label>Role</Label>
-                        <Input
-                          value={exp.role}
-                          onChange={(v) => updateExperience(idx, { role: v })}
-                          placeholder="Role / title"
-                        />
-                      </div>
-                      <div>
-                        <Label>From</Label>
-                        <Input
-                          type="date"
-                          value={exp.from}
-                          onChange={(v) => updateExperience(idx, { from: v })}
-                        />
-                      </div>
-                      <div>
-                        <Label>To (date or Present)</Label>
-                        <Input
-                          value={exp.to}
-                          onChange={(v) =>
-                            updateExperience(idx, { to: (v || "Present") as string | "Present" })
-                          }
-                          placeholder="Present"
-                        />
-                      </div>
+
+                      {!exp.isCurrent && (
+                        <div>
+                          <Label>To Date</Label>
+                          <Input type="date" value={toDateInput(exp.to)} onChange={(v) => updateExperience(idx, { to: v ? new Date(v) : new Date() })} />
+                        </div>
+                      )}
                     </div>
+
                     <div className="mt-3">
                       <Label>Description</Label>
                       <textarea
                         value={exp.description}
-                        onChange={(e) =>
-                          updateExperience(idx, { description: e.target.value })
-                        }
+                        onChange={(e) => updateExperience(idx, { description: e.target.value })}
                         rows={3}
                         className="w-full px-4 py-3 text-[14px] bg-[rgba(255,255,255,0.02)] text-[#f0ece4] border border-[rgba(240,236,228,0.08)] rounded-xl placeholder:text-[rgba(240,236,228,0.25)] outline-none transition-all duration-200 focus:border-[rgba(240,236,228,0.2)] focus:bg-[rgba(255,255,255,0.04)] resize-none"
                       />
                     </div>
                     <div className="mt-3 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => removeExperience(idx)}
-                        className="text-[12px] text-red-400/80 hover:text-red-300"
-                      >
-                        Remove
-                      </button>
+                      <button type="button" onClick={() => openConfirm({ title: "Remove experience?", description: "This experience entry will be permanently removed.", onConfirm: () => removeExperience(idx) })} className="text-[12px] text-red-400/80 hover:text-red-300">Remove</button>
                     </div>
                   </div>
                 ))}
@@ -562,78 +709,21 @@ export default function ProfilePage() {
             <SectionCard
               title="Education"
               subtitle="Academic background"
-              action={
-                <button
-                  type="button"
-                  onClick={addEducation}
-                  className="text-[12px] px-3 py-1.5 rounded-lg border border-[rgba(240,236,228,0.16)] text-[#f0ece4] bg-[rgba(240,236,228,0.08)] hover:bg-[rgba(240,236,228,0.14)]"
-                >
-                  + Add Education
-                </button>
-              }
+              action={<button type="button" onClick={addEducation} className="text-[12px] px-3 py-1.5 rounded-lg border border-[rgba(240,236,228,0.16)] text-[#f0ece4] bg-[rgba(240,236,228,0.08)] hover:bg-[rgba(240,236,228,0.14)]">+ Add Education</button>}
             >
               <div className="space-y-4">
-                {data.education.map((edu, idx) => (
-                  <div
-                    key={idx}
-                    className="rounded-xl border border-[rgba(240,236,228,0.08)] bg-[rgba(255,255,255,0.01)] p-4"
-                  >
+                {data.portfolio.education.map((edu, idx) => (
+                  <div key={idx} className="rounded-xl border border-[rgba(240,236,228,0.08)] bg-[rgba(255,255,255,0.01)] p-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <Label>Institution</Label>
-                        <Input
-                          value={edu.institution}
-                          onChange={(v) => updateEducation(idx, { institution: v })}
-                          placeholder="Institution"
-                        />
-                      </div>
-                      <div>
-                        <Label>Degree</Label>
-                        <Input
-                          value={edu.degree}
-                          onChange={(v) => updateEducation(idx, { degree: v })}
-                          placeholder="Degree"
-                        />
-                      </div>
-                      <div>
-                        <Label>Duration</Label>
-                        <Input
-                          value={edu.duration}
-                          onChange={(v) => updateEducation(idx, { duration: v })}
-                          placeholder="2019 - 2023"
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <Label>Score</Label>
-                          <Input
-                            type="number"
-                            value={edu.score}
-                            onChange={(v) =>
-                              updateEducation(idx, { score: Number(v || 0) })
-                            }
-                          />
-                        </div>
-                        <div>
-                          <Label>Max Score</Label>
-                          <Input
-                            type="number"
-                            value={edu.maxScore}
-                            onChange={(v) =>
-                              updateEducation(idx, { maxScore: Number(v || 0) })
-                            }
-                          />
-                        </div>
-                      </div>
+                      <div><Label>Institution</Label><Input value={edu.institution} onChange={(v) => updateEducation(idx, { institution: v })} placeholder="Institution" /></div>
+                      <div><Label>Degree</Label><Input value={edu.degree} onChange={(v) => updateEducation(idx, { degree: v })} placeholder="Degree" /></div>
+                      <div><Label>From</Label><Input type="date" value={toDateInput(edu.from)} onChange={(v) => updateEducation(idx, { from: v ? new Date(v) : new Date() })} /></div>
+                      <div><Label>To</Label><Input type="date" value={toDateInput(edu.to)} onChange={(v) => updateEducation(idx, { to: v ? new Date(v) : new Date() })} /></div>
+                      <div><Label>Score</Label><Input type="number" value={edu.score} onChange={(v) => updateEducation(idx, { score: Number(v || 0) })} /></div>
+                      <div><Label>Max Score</Label><Input type="number" value={edu.maxScore} onChange={(v) => updateEducation(idx, { maxScore: Number(v || 0) })} /></div>
                     </div>
                     <div className="mt-3 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => removeEducation(idx)}
-                        className="text-[12px] text-red-400/80 hover:text-red-300"
-                      >
-                        Remove
-                      </button>
+                      <button type="button" onClick={() => openConfirm({ title: "Remove education?", description: "This education entry will be permanently removed.", onConfirm: () => removeEducation(idx) })} className="text-[12px] text-red-400/80 hover:text-red-300">Remove</button>
                     </div>
                   </div>
                 ))}
@@ -643,91 +733,29 @@ export default function ProfilePage() {
             <SectionCard
               title="Certifications"
               subtitle="Proof of specialized expertise"
-              action={
-                <button
-                  type="button"
-                  onClick={addCertification}
-                  className="text-[12px] px-3 py-1.5 rounded-lg border border-[rgba(240,236,228,0.16)] text-[#f0ece4] bg-[rgba(240,236,228,0.08)] hover:bg-[rgba(240,236,228,0.14)]"
-                >
-                  + Add Certification
-                </button>
-              }
+              action={<button type="button" onClick={addCertification} className="text-[12px] px-3 py-1.5 rounded-lg border border-[rgba(240,236,228,0.16)] text-[#f0ece4] bg-[rgba(240,236,228,0.08)] hover:bg-[rgba(240,236,228,0.14)]">+ Add Certification</button>}
             >
               <div className="space-y-4">
-                {data.certifications.map((cert, idx) => (
-                  <div
-                    key={idx}
-                    className="rounded-xl border border-[rgba(240,236,228,0.08)] bg-[rgba(255,255,255,0.01)] p-4"
-                  >
+                {data.portfolio.certifications.map((cert, idx) => (
+                  <div key={idx} className="rounded-xl border border-[rgba(240,236,228,0.08)] bg-[rgba(255,255,255,0.01)] p-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <Label>Certification Name</Label>
-                        <Input
-                          value={cert.name}
-                          onChange={(v) => updateCertification(idx, { name: v })}
-                          placeholder="Certification name"
-                        />
-                      </div>
-                      <div>
-                        <Label>Issuer</Label>
-                        <Input
-                          value={cert.issuer}
-                          onChange={(v) => updateCertification(idx, { issuer: v })}
-                          placeholder="Issuer"
-                        />
-                      </div>
+                      <div><Label>Certification Name</Label><Input value={cert.name} onChange={(v) => updateCertification(idx, { name: v })} placeholder="Certification name" /></div>
+                      <div><Label>Issuer</Label><Input value={cert.issuer} onChange={(v) => updateCertification(idx, { issuer: v })} placeholder="Issuer" /></div>
                       <div>
                         <Label>Date</Label>
-                        <Input
-                          type="date"
-                          value={cert.date}
-                          onChange={(v) => updateCertification(idx, { date: v })}
-                        />
-                      </div>
-                      <div>
-                        <Label>Image Public ID</Label>
-                        <Input
-                          value={cert.image.publicId}
-                          onChange={(v) =>
-                            updateCertification(idx, {
-                              image: { ...cert.image, publicId: v },
-                            })
-                          }
-                          placeholder="certs/xyz"
-                        />
-                      </div>
-                      <div className="md:col-span-2">
-                        <Label>Certificate Image URL</Label>
-                        <Input
-                          value={cert.image.url}
-                          onChange={(v) =>
-                            updateCertification(idx, {
-                              image: { ...cert.image, url: v },
-                            })
-                          }
-                          placeholder="https://..."
-                        />
+                        <Input type="date" value={toDateInput(cert.date)} onChange={(v) => updateCertification(idx, { date: v })} />
+                        {cert.date ? <p className="text-[11px] mt-1 text-[rgba(240,236,228,0.45)]">{toDisplayDateDDMMYYYY(cert.date)}</p> : null}
                       </div>
                     </div>
 
-                    {cert.image.url ? (
+                    {cert.image?.url ? (
                       <div className="mt-3 rounded-xl overflow-hidden border border-[rgba(240,236,228,0.08)]">
-                        <img
-                          src={cert.image.url}
-                          alt={cert.name || "Certificate"}
-                          className="w-full h-44 object-cover"
-                        />
+                        <img src={cert.image.url} alt={cert.name || "Certificate"} className="w-full h-44 object-cover" />
                       </div>
                     ) : null}
 
                     <div className="mt-3 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => removeCertification(idx)}
-                        className="text-[12px] text-red-400/80 hover:text-red-300"
-                      >
-                        Remove
-                      </button>
+                      <button type="button" onClick={() => openConfirm({ title: "Remove certification?", description: "This certification entry will be permanently removed.", onConfirm: () => removeCertification(idx) })} className="text-[12px] text-red-400/80 hover:text-red-300">Remove</button>
                     </div>
                   </div>
                 ))}
@@ -735,25 +763,21 @@ export default function ProfilePage() {
             </SectionCard>
           </div>
 
-          {/* Footer actions */}
-          <div className="xl:col-span-3 flex items-center justify-between pt-2">
-            <a
-              href="/"
-              className="text-[13px] tracking-[0.03em] text-[rgba(240,236,228,0.35)] no-underline transition-colors duration-200 hover:text-[rgba(240,236,228,0.7)]"
-            >
-              Cancel
-            </a>
-            <button
-              type="submit"
-              className="text-[13px] tracking-[0.04em] px-7 py-3 rounded-xl border border-[rgba(240,236,228,0.18)] bg-[rgba(240,236,228,0.1)] text-[#f0ece4] transition-all duration-200 hover:bg-[rgba(240,236,228,0.18)] hover:border-[rgba(240,236,228,0.28)] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_4px_16px_rgba(0,0,0,0.25)]"
-            >
-              Save Profile
-            </button>
+          <div className="xl:col-span-3">
+            {formError ? <p className="text-[13px] text-red-400 mb-3">{formError}</p> : null}
+            <div className="flex items-center justify-between pt-2">
+              <a href="/" className="text-[13px] tracking-[0.03em] text-[rgba(240,236,228,0.35)] no-underline transition-colors duration-200 hover:text-[rgba(240,236,228,0.7)]">Cancel</a>
+              <button type="submit" disabled={saving || !canSaveProfile} className="text-[13px] tracking-[0.04em] px-7 py-3 rounded-xl border border-[rgba(240,236,228,0.18)] bg-[rgba(240,236,228,0.1)] text-[#f0ece4] transition-all duration-200 hover:bg-[rgba(240,236,228,0.18)] hover:border-[rgba(240,236,228,0.28)] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_4px_16px_rgba(0,0,0,0.25)] disabled:opacity-60 disabled:cursor-not-allowed">
+                {saving ? "Saving..." : "Save Profile"}
+              </button>
+            </div>
           </div>
         </form>
       </main>
 
       <Footer />
+
+      <ConfirmModal open={confirmState.open} title={confirmState.title} description={confirmState.description} onCancel={closeConfirm} onConfirm={handleConfirm} />
     </div>
   );
 }

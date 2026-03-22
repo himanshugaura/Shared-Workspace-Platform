@@ -8,6 +8,7 @@ import GoogleLoginButton from "@/components/auth/GoogleButton";
 import GrainOverlay from "@/components/common/GrainOverlay";
 import { login } from "@/api/auth";
 import { useRouter } from "next/navigation";
+import AuthGuard from "@/components/common/AuthGaurd";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
@@ -24,6 +25,7 @@ export default function LoginPage() {
   };
 
   return (
+    <AuthGuard requireAuth={false}>
     <div className="min-h-screen bg-[#0a0a0a] font-['DM_Sans'] flex flex-col">
         <GrainOverlay originX={0.2} originY={0.3} spread={0.5} density={0.4}/>
       <Navbar showAuthButtons={false} />
@@ -98,5 +100,6 @@ export default function LoginPage() {
 
       <Footer />
     </div>
+    </AuthGuard>
   );
 }

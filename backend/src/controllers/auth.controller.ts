@@ -8,6 +8,7 @@ import crypto from "crypto";
 import { sendVerificationMail } from "../utils/sendMail.js";
 import { OAuth2Client } from "google-auth-library";
 import { generateTempUsername } from "../utils/generateUsername.js";
+import { deleteFromCloudinary, uploadBufferToCloudinary } from "../utils/cloudinaryUpload.js";
 
 export const register = asyncHandler(async (req, res) => {
   const { name, username , email, password } = req.body;
@@ -245,5 +246,133 @@ export const sendVerificationToken = asyncHandler(async (req, res) => {
 
   return sendResponse(res, 200, {
     message: "Verification email sent successfully",
+  });
+});
+
+export const resendVerificationToken = asyncHandler(async (req, res) => {
+  const userId = req.userId;
+
+  const user = await User.findById(userId);
+
+  if (!user) {
+    throwError(404, "User not found");
+    return;
+  }
+
+  if (user.isVerified) {
+    throwError(400, "Email is already verified");
+  }
+
+  const { token, hashedToken } = generateEmailVerificationToken();
+
+  user.emailVerificationToken = hashedToken;
+  user.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  await user.save();
+
+  const verificationUrl =
+    `${process.env.FRONTEND_URL}/auth/verify-email/${token}`;
+
+  await sendVerificationMail({
+    to: user.email,
+    name: user.name,
+    verificationUrl,
+  });
+
+  return sendResponse(res, 200, {
+    message: "Verification email resent successfully",
+  });
+});
+
+
+export const updateProfile = asyncHandler(async (req, res) => {
+  const userId = req.userId;
+  const { name, username } = req.body;
+
+  let portfolio: any = undefined;
+  if (req.body.portfolio !== undefined) {
+    try {
+      portfolio =
+        typeof req.body.portfolio === "string"
+          ? JSON.parse(req.body.portfolio)
+          : req.body.portfolio;
+    } catch {
+      throwError(400, "Invalid portfolio JSON");
+      return;
+    }
+  }
+
+  const user = await User.findById(userId);
+  if (!user) {
+    throwError(404, "User not found");
+    return;
+  }
+
+  if (username && username !== user.username) {
+    const existingUser = await User.findOne({ username });
+    if (existingUser) {
+      throwError(409, "Username already taken");
+      return;
+    }
+    user.username = username;
+  }
+
+  if (name !== undefined) user.name = name;
+
+  // Handle image upload first with explicit try/catch
+  if (req.file) {
+    if (!req.file.buffer) {
+      throwError(400, "Profile image buffer missing");
+      return;
+    }
+
+    try {
+      const uploaded = await uploadBufferToCloudinary(req.file.buffer, "profileImage");
+
+      const oldPublicId = user.profileImage?.publicId;
+
+      user.profileImage = {
+        url: uploaded.secure_url,
+        publicId: uploaded.public_id,
+      };
+
+      // delete old only after new is assigned
+      if (oldPublicId) {
+        try {
+          await deleteFromCloudinary(oldPublicId);
+        } catch (e) {
+          console.warn("Failed to delete old image:", e);
+        }
+      }
+    } catch (e) {
+      console.error("Cloudinary upload error:", e);
+      throwError(500, "Failed to upload profile image");
+      return;
+    }
+  }
+
+  if (portfolio !== undefined) {
+    if (!user.portfolio) user.portfolio = {} as any;
+
+    const { skills, experience, education, certifications, achievements } = portfolio;
+
+    if (skills !== undefined) user.portfolio.skills = skills;
+    if (experience !== undefined) user.portfolio.experience = experience;
+    if (education !== undefined) user.portfolio.education = education;
+    if (certifications !== undefined) user.portfolio.certifications = certifications;
+    if (achievements !== undefined) user.portfolio.achievements = achievements;
+  }
+
+  try {
+    await user.save();
+  } catch (e: any) {
+    console.error("User save validation error:", e);
+    throwError(400, e?.message || "Profile validation failed");
+    return;
+  }
+
+  return sendResponse(res, 200, {
+    message: "Profile & Portfolio updated successfully",
+    data: user,
   });
 });

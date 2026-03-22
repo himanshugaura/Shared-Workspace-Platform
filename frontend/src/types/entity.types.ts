@@ -8,23 +8,22 @@ export interface Portfolio  {
         from: Date;
         to: Date | "Present";
         description: string;
-    }
+    }[];
     education: {
         institution: string;
         degree: string;
         duration: string;
         score: Number;
         maxScore: Number;
-    }
+    }[];
     certifications: {
         name: string;
         issuer: string;
         date: string;
         image: {
             url: string;
-            publicId: string;
         }
-    }
+    }[];
     achievements: string[];
 }
 
@@ -38,7 +37,6 @@ export interface User {
     isVerified: boolean;
     profileImage: {
         url: string;
-        publicId: string;
     }
     emailVerificationToken?: string;
     emailVerificationExpires?: Date;

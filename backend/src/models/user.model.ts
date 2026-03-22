@@ -11,6 +11,7 @@ const portfolioSchema = new Schema(
     skills: [
       {
         type: String,
+        uppercase: true,
       },
     ],
     experience: [
@@ -18,10 +19,12 @@ const portfolioSchema = new Schema(
         company: {
           type: String,
           required: true,
+          uppercase: true,
         },
         role: {
           type: String,
           required: true,
+          uppercase: true,
         },
         from: {
           type: Date,
@@ -37,6 +40,7 @@ const portfolioSchema = new Schema(
         description: {
           type: String,
           required: true,
+          capitilaize: true,
         },
       },
     ],
@@ -45,10 +49,12 @@ const portfolioSchema = new Schema(
         institution: {
           type: String,
           required: true,
+          uppercase: true,
         },
         degree: {
           type: String,
           required: true,
+          uppercase: true,
         },
         from: {
           type: Date,
@@ -73,18 +79,16 @@ const portfolioSchema = new Schema(
         name: {
           type: String,
           required: true,
+          uppercase: true,
         },
         issuer: {
           type: String,
           required: true,
+          uppercase: true,
         },
         date: {
           type: String,
           required: true,
-        },
-        image: {
-          url: { type: String },
-          publicId: { type: String },
         },
       },
     ],
@@ -104,6 +108,7 @@ const userSchema = new Schema<IUser, UserModel>(
     name: {
       type: String,
       required: true,
+      uppercase: true,
     },
     email: {
       type: String,

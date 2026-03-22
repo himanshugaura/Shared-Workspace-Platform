@@ -7,6 +7,7 @@ import GrainOverlay from "@/components/common/GrainOverlay";
 import GoogleLoginButton from "@/components/auth/GoogleButton";
 import { register, verifyUsername } from "@/api/auth";
 import { useAppDispatch } from "@/store/hook";
+import AuthGuard from "@/components/common/AuthGaurd";
 
 type UsernameStatus = "idle" | "checking" | "available" | "taken" | "error";
 
@@ -119,6 +120,7 @@ export default function RegisterPage() {
   const usernameUi = getUsernameState(usernameStatus, usernameMessage);
 
   return (
+    <AuthGuard requireAuth={false}>
     <div className="min-h-screen bg-[#0a0a0a] font-['DM_Sans'] flex flex-col">
       <Navbar showAuthButtons={false} />
       <GrainOverlay originX={0.2} originY={0.3} spread={0.5} density={0.4} />
@@ -225,5 +227,6 @@ export default function RegisterPage() {
 
       <Footer />
     </div>
+    </AuthGaurd>
   );
 }

@@ -111,13 +111,12 @@ export const googleLogin =
 export const verifyEmail = (token : string) => async (): Promise<boolean> => {
   try {
     const res = await apiConnector("GET", `${AuthEndpoints.VERIFY_EMAIL_API}/${token}`);
-    console.log(res);
     
     if (res.success) {
       return true;
     } else {
       toast.error(res.message || "Email verification failed");
-      return false;
+      return false; 
     }
   } catch (error) {
     console.error("Email verification error:");
@@ -126,19 +125,66 @@ export const verifyEmail = (token : string) => async (): Promise<boolean> => {
 };
 
 export const sendVerificaitonToken = () => async (): Promise<boolean> => {
+  const toastId = toast.loading("Sending verification email...");
   try {
     const res = await apiConnector("POST", AuthEndpoints.SEND_VERIFICATION_TOKEN_API);
 
     if (res.success) {
+      toast.dismiss(toastId);
       toast.success("Verification email resent");
       return true;
     } else {
+      toast.dismiss(toastId);
       toast.error(res.message || "Failed to resend verification email");
       return false;
     }
   } catch (error) {
+    toast.dismiss(toastId);
     console.error("Resend verification email error:", error);
     toast.error("Failed to resend verification email");
     return false;
   }
 };
+
+export const getProfile = () => async (dispatch: AppDispatch): Promise<boolean> => {
+  try {
+    const res = await apiConnector("GET", AuthEndpoints.GET_USER_PROFILE_API);
+
+    if (res.success && res.data) {
+      dispatch(setUser(res.data as User));
+      return true;
+    } else {
+      toast.error(res.message || "Failed to fetch profile");
+      return false;
+    }
+  } catch (error) {
+    console.error("Get profile error:", error);
+    toast.error("Failed to fetch profile");
+    return false;
+  }
+};
+
+export const updateProfile = (formData: FormData) => async (dispatch: AppDispatch): Promise<boolean> => {
+  const toastId = toast.loading("Updating profile...");
+  try {
+    const res = await apiConnector("PUT", AuthEndpoints.UPDATE_PROFILE_API, formData);
+
+    console.log(res);
+
+    if (res.success && res.data) {
+      dispatch(setUser(res.data as User));
+      toast.dismiss(toastId);
+      toast.success("Profile updated successfully");
+      return true;
+    } else {
+      toast.dismiss(toastId);
+      toast.error(res.message || "Failed to update profile");
+      return false;
+    }
+  } catch (error) {
+    console.error("Update profile error:", error);
+    toast.dismiss(toastId);
+    toast.error("Failed to update profile");
+    return false;
+  }
+}
