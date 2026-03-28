@@ -12,4 +12,6 @@ export const AuthEndpoints = {
   SEND_VERIFICATION_TOKEN_API: BASE_URL + "/auth/send-verification-email",
   GET_USER_PROFILE_API: BASE_URL + "/auth/profile",
   UPDATE_PROFILE_API: BASE_URL + "/auth/update-profile",
+   GET_USER_BY_USERNAME_API: (username: string) =>
+    `${BASE_URL}/auth/profile/${username}`,
 };

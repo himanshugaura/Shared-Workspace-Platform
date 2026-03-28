@@ -4,6 +4,7 @@ import { AuthEndpoints } from "./apis";
 import toast from "react-hot-toast";
 import { setUser } from "@/store/features/auth.slice";
 import { User } from "@/types/entity.types";
+import { setViewProfile } from "@/store/features/viewProfile.slice";
 
 
 export const register = (name: string, username: string, email: string, password: string) => async (dispatch: AppDispatch): Promise<boolean> => {
@@ -188,3 +189,24 @@ export const updateProfile = (formData: FormData) => async (dispatch: AppDispatc
     return false;
   }
 }
+
+export const fetchProfileByUsername = (username: string) => async (dispatch: AppDispatch): Promise<boolean> => {
+  try {
+    const res = await apiConnector("GET", AuthEndpoints.GET_USER_BY_USERNAME_API(username));
+    console.log(res);
+    console.log(username);
+    
+
+    if (res.success && res.data) {
+      dispatch(setViewProfile(res.data as User));
+      return true;
+    } else {
+      toast.error(res.message || "Failed to fetch profile");
+      return false;
+    }
+  } catch (error) {
+    console.error("Get profile by username error:", error);
+    toast.error("Failed to fetch profile");
+    return false;
+  }
+};

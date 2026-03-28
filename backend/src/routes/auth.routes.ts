@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { register, login, googleLogin, verifyEmail, logout, checkUsername, getProfile, updateProfile } from "../controllers/auth.controller.js";
+import { register, login, googleLogin, verifyEmail, logout, checkUsername, getProfile, updateProfile, getUserByUsername } from "../controllers/auth.controller.js";
 import { authMiddleware } from "../middlewares/auth.middlware.js";
 import { validate } from "../middlewares/validate.js";
 import { loginSchema, registerSchema } from "../validators/auth.validator.js";
@@ -17,5 +17,6 @@ authRoutes.get("/checkUsername", checkUsername);
 authRoutes.get("/profile", authMiddleware, getProfile);
 authRoutes.post("/send-verification-email", authMiddleware, sendVerificationToken);
 authRoutes.put("/update-profile", authMiddleware, uploadSingleProfileImage , updateProfile);
+authRoutes.get("/profile/:username", authMiddleware ,  getUserByUsername);
 
 export default authRoutes;

@@ -258,13 +258,12 @@ export default function ProfilePage() {
   const [usernameMessage, setUsernameMessage] = useState("");
   const [initialUsername, setInitialUsername] = useState("");
 
-  // Use redux store first. If no profile in store, fetch it.
   useEffect(() => {
     const bootstrap = async () => {
       try {
         setLoading(true);
         if (!storeUser) {
-          await dispatch(getProfile() as never); // returns boolean
+          await dispatch(getProfile() as never);
         }
       } finally {
         setLoading(false);
@@ -273,7 +272,6 @@ export default function ProfilePage() {
     bootstrap();
   }, [dispatch, storeUser]);
 
-  // Whenever store user changes, hydrate local editable state
   useEffect(() => {
     if (!storeUser) return;
     const normalized = normalizeUser(storeUser as User);
@@ -327,9 +325,8 @@ export default function ProfilePage() {
           setUsernameStatus("taken");
           setUsernameMessage("Username is not available");
         }
-      } catch (error) {
+      } catch {
         if (cancelled) return;
-        console.error("verify username failed:", error);
         setUsernameStatus("error");
         setUsernameMessage("Error verifying username");
       }
@@ -350,20 +347,6 @@ export default function ProfilePage() {
     confirmState.onConfirm?.();
     closeConfirm();
   };
-
-  const profileCompletion = useMemo(() => {
-    let score = 0;
-    if (data.name) score += 10;
-    if (data.username) score += 10;
-    if (data.email) score += 10;
-    if (data.profileImage?.url || profileImageFile) score += 10;
-    if (data.portfolio.skills.length) score += 15;
-    if (data.portfolio.experience.length) score += 15;
-    if (data.portfolio.education.length) score += 10;
-    if (data.portfolio.certifications.length) score += 10;
-    if (data.portfolio.achievements.length) score += 10;
-    return Math.min(score, 100);
-  }, [data, profileImageFile]);
 
   const validateBeforeSubmit = (): string => {
     for (let i = 0; i < data.portfolio.experience.length; i++) {
@@ -543,9 +526,7 @@ export default function ProfilePage() {
       }
 
       setProfileImageFile(null);
-      // store gets updated by service; local state re-hydrates from storeUser effect
-    } catch (err) {
-      console.error("Failed to save profile:", err);
+    } catch {
       setFormError("Failed to save profile. Please try again.");
     } finally {
       setSaving(false);
@@ -569,34 +550,23 @@ export default function ProfilePage() {
       <Navbar />
 
       <main className="max-w-6xl mx-auto px-6 md:px-8 pt-10 pb-20">
-        <div className="mb-8 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-[12px] uppercase tracking-[0.12em] text-[rgba(240,236,228,0.35)] mb-2">Profile</p>
-            <h1 className="font-['Playfair_Display'] text-[clamp(30px,4.2vw,46px)] text-[#f0ece4] leading-[1.1] tracking-[-0.02em]">
-              Professional Portfolio
-            </h1>
-            <p className="text-[14px] text-[rgba(240,236,228,0.38)] mt-3 max-w-2xl leading-[1.7]">
-              Build a high-signal profile that presents your experience, skills, achievements and credentials in a cleaner, more compelling format than a traditional resume.
-            </p>
-          </div>
-
-          <div className="w-full max-w-sm rounded-2xl border border-[rgba(240,236,228,0.1)] bg-[rgba(255,255,255,0.02)] p-5">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-[12px] text-[rgba(240,236,228,0.4)] tracking-[0.08em] uppercase">Profile Strength</span>
-              <span className="text-[13px] text-[#f0ece4]">{profileCompletion}%</span>
-            </div>
-            <div className="h-2 rounded-full bg-[rgba(240,236,228,0.08)] overflow-hidden">
-              <div className="h-full bg-linear-to-r from-emerald-400/70 via-sky-400/70 to-violet-400/70" style={{ width: `${profileCompletion}%` }} />
-            </div>
-          </div>
+        <div className="mb-8">
+          <p className="text-[12px] uppercase tracking-[0.12em] text-[rgba(240,236,228,0.35)] mb-2">Profile</p>
+          <h1 className="font-['Playfair_Display'] text-[clamp(30px,4.2vw,46px)] text-[#f0ece4] leading-[1.1] tracking-[-0.02em]">
+            Professional Portfolio
+          </h1>
+          <p className="text-[14px] text-[rgba(240,236,228,0.38)] mt-3 max-w-2xl leading-[1.7]">
+            Build a high-signal profile that presents your experience, skills, achievements and credentials in a cleaner, more compelling format than a traditional resume.
+          </p>
         </div>
 
         <form onSubmit={handleSave} className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           <div className="xl:col-span-1 flex flex-col gap-6">
             <SectionCard title="Identity" subtitle="Core account details">
-              <div className="mb-6">
+              <div className="mb-6 flex justify-center">
                 <ImageCropUpload
                   currentImageUrl={data.profileImage.url}
+                  label="Upload"
                   onCroppedFile={(file) => {
                     setProfileImageFile(file);
                     setData((prev) => ({ ...prev, profileImage: { ...prev.profileImage, url: URL.createObjectURL(file) } }));
@@ -624,30 +594,76 @@ export default function ProfilePage() {
             <SectionCard title="Skills" subtitle="What you’re best at">
               <div className="flex flex-wrap gap-2 mb-4">
                 {data.portfolio.skills.map((skill) => (
-                  <span key={skill} className="inline-flex items-center gap-2 text-[12px] px-3 py-1.5 rounded-lg bg-[rgba(139,92,246,0.08)] text-[rgba(196,181,253,0.8)] border border-[rgba(139,92,246,0.22)]">
+                  <span
+                    key={skill}
+                    className="inline-flex items-center gap-2 text-[12px] px-3 py-1.5 rounded-lg bg-[rgba(139,92,246,0.08)] text-[rgba(196,181,253,0.8)] border border-[rgba(139,92,246,0.22)]"
+                  >
                     {skill}
-                    <button type="button" onClick={() => openConfirm({ title: "Remove skill?", description: `Are you sure you want to remove "${skill}"?`, onConfirm: () => removeSkill(skill) })} className="text-[rgba(196,181,253,0.45)] hover:text-[rgba(196,181,253,0.95)]">✕</button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openConfirm({
+                          title: "Remove skill?",
+                          description: `Are you sure you want to remove "${skill}"?`,
+                          onConfirm: () => removeSkill(skill),
+                        })
+                      }
+                      className="text-[rgba(196,181,253,0.45)] hover:text-[rgba(196,181,253,0.95)]"
+                    >
+                      ✕
+                    </button>
                   </span>
                 ))}
               </div>
               <div className="flex gap-2">
                 <Input value={skillInput} onChange={setSkillInput} placeholder="Add a skill" />
-                <button type="button" onClick={addSkill} className="px-4 rounded-xl border border-[rgba(240,236,228,0.18)] text-[#f0ece4] bg-[rgba(240,236,228,0.1)] hover:bg-[rgba(240,236,228,0.16)] transition">Add</button>
+                <button
+                  type="button"
+                  onClick={addSkill}
+                  className="px-4 rounded-xl border border-[rgba(240,236,228,0.18)] text-[#f0ece4] bg-[rgba(240,236,228,0.1)] hover:bg-[rgba(240,236,228,0.16)] transition"
+                >
+                  Add
+                </button>
               </div>
             </SectionCard>
 
             <SectionCard title="Achievements" subtitle="Highlights that stand out">
               <div className="space-y-2 mb-4">
                 {data.portfolio.achievements.map((a) => (
-                  <div key={a} className="flex items-start justify-between gap-3 text-[13px] text-[rgba(240,236,228,0.72)] px-3 py-2.5 rounded-lg border border-[rgba(240,236,228,0.08)] bg-[rgba(255,255,255,0.015)]">
+                  <div
+                    key={a}
+                    className="flex items-start justify-between gap-3 text-[13px] text-[rgba(240,236,228,0.72)] px-3 py-2.5 rounded-lg border border-[rgba(240,236,228,0.08)] bg-[rgba(255,255,255,0.015)]"
+                  >
                     <span>• {a}</span>
-                    <button type="button" onClick={() => openConfirm({ title: "Remove achievement?", description: "This achievement will be removed.", onConfirm: () => removeAchievement(a) })} className="text-[rgba(240,236,228,0.35)] hover:text-[rgba(240,236,228,0.8)]">✕</button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openConfirm({
+                          title: "Remove achievement?",
+                          description: "This achievement will be removed.",
+                          onConfirm: () => removeAchievement(a),
+                        })
+                      }
+                      className="text-[rgba(240,236,228,0.35)] hover:text-[rgba(240,236,228,0.8)]"
+                    >
+                      ✕
+                    </button>
                   </div>
                 ))}
               </div>
               <div className="flex gap-2">
-                <Input value={achievementInput} onChange={setAchievementInput} placeholder="Add achievement" />
-                <button type="button" onClick={addAchievement} className="px-4 rounded-xl border border-[rgba(240,236,228,0.18)] text-[#f0ece4] bg-[rgba(240,236,228,0.1)] hover:bg-[rgba(240,236,228,0.16)] transition">Add</button>
+                <Input
+                  value={achievementInput}
+                  onChange={setAchievementInput}
+                  placeholder="Add achievement"
+                />
+                <button
+                  type="button"
+                  onClick={addAchievement}
+                  className="px-4 rounded-xl border border-[rgba(240,236,228,0.18)] text-[#f0ece4] bg-[rgba(240,236,228,0.1)] hover:bg-[rgba(240,236,228,0.16)] transition"
+                >
+                  Add
+                </button>
               </div>
             </SectionCard>
           </div>
@@ -656,23 +672,60 @@ export default function ProfilePage() {
             <SectionCard
               title="Experience"
               subtitle="Professional roles and contributions"
-              action={<button type="button" onClick={addExperience} className="text-[12px] px-3 py-1.5 rounded-lg border border-[rgba(240,236,228,0.16)] text-[#f0ece4] bg-[rgba(240,236,228,0.08)] hover:bg-[rgba(240,236,228,0.14)]">+ Add Experience</button>}
+              action={
+                <button
+                  type="button"
+                  onClick={addExperience}
+                  className="text-[12px] px-3 py-1.5 rounded-lg border border-[rgba(240,236,228,0.16)] text-[#f0ece4] bg-[rgba(240,236,228,0.08)] hover:bg-[rgba(240,236,228,0.14)]"
+                >
+                  + Add Experience
+                </button>
+              }
             >
               <div className="space-y-4">
                 {data.portfolio.experience.map((exp, idx) => (
-                  <div key={idx} className="rounded-xl border border-[rgba(240,236,228,0.08)] bg-[rgba(255,255,255,0.01)] p-4">
+                  <div
+                    key={idx}
+                    className="rounded-xl border border-[rgba(240,236,228,0.08)] bg-[rgba(255,255,255,0.01)] p-4"
+                  >
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div><Label>Company</Label><Input value={exp.company} onChange={(v) => updateExperience(idx, { company: v })} placeholder="Company name" /></div>
-                      <div><Label>Role</Label><Input value={exp.role} onChange={(v) => updateExperience(idx, { role: v })} placeholder="Role / title" /></div>
-                      <div><Label>From</Label><Input type="date" value={toDateInput(exp.from)} onChange={(v) => updateExperience(idx, { from: v ? new Date(v) : new Date() })} /></div>
+                      <div>
+                        <Label>Company</Label>
+                        <Input
+                          value={exp.company}
+                          onChange={(v) => updateExperience(idx, { company: v })}
+                          placeholder="Company name"
+                        />
+                      </div>
+                      <div>
+                        <Label>Role</Label>
+                        <Input
+                          value={exp.role}
+                          onChange={(v) => updateExperience(idx, { role: v })}
+                          placeholder="Role / title"
+                        />
+                      </div>
+                      <div>
+                        <Label>From</Label>
+                        <Input
+                          type="date"
+                          value={toDateInput(exp.from)}
+                          onChange={(v) =>
+                            updateExperience(idx, { from: v ? new Date(v) : new Date() })
+                          }
+                        />
+                      </div>
                       <div>
                         <Label>To Type</Label>
                         <select
                           value={exp.isCurrent ? "present" : "date"}
                           onChange={(e) => {
                             const mode = e.target.value as "present" | "date";
-                            if (mode === "present") updateExperience(idx, { isCurrent: true, to: undefined });
-                            else updateExperience(idx, { isCurrent: false, to: new Date() });
+                            if (mode === "present") {
+                              updateExperience(idx, { isCurrent: true, to: undefined });
+                            } else {
+                              updateExperience(idx, { isCurrent: false, to: new Date() });
+                            }
                           }}
                           className="w-full px-4 py-3 text-[14px] bg-[rgba(255,255,255,0.02)] text-[#f0ece4] border border-[rgba(240,236,228,0.08)] rounded-xl outline-none transition-all duration-200 focus:border-[rgba(240,236,228,0.2)] focus:bg-[rgba(255,255,255,0.04)]"
                         >
@@ -684,7 +737,13 @@ export default function ProfilePage() {
                       {!exp.isCurrent && (
                         <div>
                           <Label>To Date</Label>
-                          <Input type="date" value={toDateInput(exp.to)} onChange={(v) => updateExperience(idx, { to: v ? new Date(v) : new Date() })} />
+                          <Input
+                            type="date"
+                            value={toDateInput(exp.to)}
+                            onChange={(v) =>
+                              updateExperience(idx, { to: v ? new Date(v) : new Date() })
+                            }
+                          />
                         </div>
                       )}
                     </div>
@@ -699,7 +758,19 @@ export default function ProfilePage() {
                       />
                     </div>
                     <div className="mt-3 flex justify-end">
-                      <button type="button" onClick={() => openConfirm({ title: "Remove experience?", description: "This experience entry will be permanently removed.", onConfirm: () => removeExperience(idx) })} className="text-[12px] text-red-400/80 hover:text-red-300">Remove</button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openConfirm({
+                            title: "Remove experience?",
+                            description: "This experience entry will be permanently removed.",
+                            onConfirm: () => removeExperience(idx),
+                          })
+                        }
+                        className="text-[12px] text-red-400/80 hover:text-red-300"
+                      >
+                        Remove
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -709,21 +780,86 @@ export default function ProfilePage() {
             <SectionCard
               title="Education"
               subtitle="Academic background"
-              action={<button type="button" onClick={addEducation} className="text-[12px] px-3 py-1.5 rounded-lg border border-[rgba(240,236,228,0.16)] text-[#f0ece4] bg-[rgba(240,236,228,0.08)] hover:bg-[rgba(240,236,228,0.14)]">+ Add Education</button>}
+              action={
+                <button
+                  type="button"
+                  onClick={addEducation}
+                  className="text-[12px] px-3 py-1.5 rounded-lg border border-[rgba(240,236,228,0.16)] text-[#f0ece4] bg-[rgba(240,236,228,0.08)] hover:bg-[rgba(240,236,228,0.14)]"
+                >
+                  + Add Education
+                </button>
+              }
             >
               <div className="space-y-4">
                 {data.portfolio.education.map((edu, idx) => (
-                  <div key={idx} className="rounded-xl border border-[rgba(240,236,228,0.08)] bg-[rgba(255,255,255,0.01)] p-4">
+                  <div
+                    key={idx}
+                    className="rounded-xl border border-[rgba(240,236,228,0.08)] bg-[rgba(255,255,255,0.01)] p-4"
+                  >
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div><Label>Institution</Label><Input value={edu.institution} onChange={(v) => updateEducation(idx, { institution: v })} placeholder="Institution" /></div>
-                      <div><Label>Degree</Label><Input value={edu.degree} onChange={(v) => updateEducation(idx, { degree: v })} placeholder="Degree" /></div>
-                      <div><Label>From</Label><Input type="date" value={toDateInput(edu.from)} onChange={(v) => updateEducation(idx, { from: v ? new Date(v) : new Date() })} /></div>
-                      <div><Label>To</Label><Input type="date" value={toDateInput(edu.to)} onChange={(v) => updateEducation(idx, { to: v ? new Date(v) : new Date() })} /></div>
-                      <div><Label>Score</Label><Input type="number" value={edu.score} onChange={(v) => updateEducation(idx, { score: Number(v || 0) })} /></div>
-                      <div><Label>Max Score</Label><Input type="number" value={edu.maxScore} onChange={(v) => updateEducation(idx, { maxScore: Number(v || 0) })} /></div>
+                      <div>
+                        <Label>Institution</Label>
+                        <Input
+                          value={edu.institution}
+                          onChange={(v) => updateEducation(idx, { institution: v })}
+                          placeholder="Institution"
+                        />
+                      </div>
+                      <div>
+                        <Label>Degree</Label>
+                        <Input
+                          value={edu.degree}
+                          onChange={(v) => updateEducation(idx, { degree: v })}
+                          placeholder="Degree"
+                        />
+                      </div>
+                      <div>
+                        <Label>From</Label>
+                        <Input
+                          type="date"
+                          value={toDateInput(edu.from)}
+                          onChange={(v) => updateEducation(idx, { from: v ? new Date(v) : new Date() })}
+                        />
+                      </div>
+                      <div>
+                        <Label>To</Label>
+                        <Input
+                          type="date"
+                          value={toDateInput(edu.to)}
+                          onChange={(v) => updateEducation(idx, { to: v ? new Date(v) : new Date() })}
+                        />
+                      </div>
+                      <div>
+                        <Label>Score</Label>
+                        <Input
+                          type="number"
+                          value={edu.score}
+                          onChange={(v) => updateEducation(idx, { score: Number(v || 0) })}
+                        />
+                      </div>
+                      <div>
+                        <Label>Max Score</Label>
+                        <Input
+                          type="number"
+                          value={edu.maxScore}
+                          onChange={(v) => updateEducation(idx, { maxScore: Number(v || 0) })}
+                        />
+                      </div>
                     </div>
                     <div className="mt-3 flex justify-end">
-                      <button type="button" onClick={() => openConfirm({ title: "Remove education?", description: "This education entry will be permanently removed.", onConfirm: () => removeEducation(idx) })} className="text-[12px] text-red-400/80 hover:text-red-300">Remove</button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openConfirm({
+                            title: "Remove education?",
+                            description: "This education entry will be permanently removed.",
+                            onConfirm: () => removeEducation(idx),
+                          })
+                        }
+                        className="text-[12px] text-red-400/80 hover:text-red-300"
+                      >
+                        Remove
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -733,29 +869,78 @@ export default function ProfilePage() {
             <SectionCard
               title="Certifications"
               subtitle="Proof of specialized expertise"
-              action={<button type="button" onClick={addCertification} className="text-[12px] px-3 py-1.5 rounded-lg border border-[rgba(240,236,228,0.16)] text-[#f0ece4] bg-[rgba(240,236,228,0.08)] hover:bg-[rgba(240,236,228,0.14)]">+ Add Certification</button>}
+              action={
+                <button
+                  type="button"
+                  onClick={addCertification}
+                  className="text-[12px] px-3 py-1.5 rounded-lg border border-[rgba(240,236,228,0.16)] text-[#f0ece4] bg-[rgba(240,236,228,0.08)] hover:bg-[rgba(240,236,228,0.14)]"
+                >
+                  + Add Certification
+                </button>
+              }
             >
               <div className="space-y-4">
                 {data.portfolio.certifications.map((cert, idx) => (
-                  <div key={idx} className="rounded-xl border border-[rgba(240,236,228,0.08)] bg-[rgba(255,255,255,0.01)] p-4">
+                  <div
+                    key={idx}
+                    className="rounded-xl border border-[rgba(240,236,228,0.08)] bg-[rgba(255,255,255,0.01)] p-4"
+                  >
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div><Label>Certification Name</Label><Input value={cert.name} onChange={(v) => updateCertification(idx, { name: v })} placeholder="Certification name" /></div>
-                      <div><Label>Issuer</Label><Input value={cert.issuer} onChange={(v) => updateCertification(idx, { issuer: v })} placeholder="Issuer" /></div>
+                      <div>
+                        <Label>Certification Name</Label>
+                        <Input
+                          value={cert.name}
+                          onChange={(v) => updateCertification(idx, { name: v })}
+                          placeholder="Certification name"
+                        />
+                      </div>
+                      <div>
+                        <Label>Issuer</Label>
+                        <Input
+                          value={cert.issuer}
+                          onChange={(v) => updateCertification(idx, { issuer: v })}
+                          placeholder="Issuer"
+                        />
+                      </div>
                       <div>
                         <Label>Date</Label>
-                        <Input type="date" value={toDateInput(cert.date)} onChange={(v) => updateCertification(idx, { date: v })} />
-                        {cert.date ? <p className="text-[11px] mt-1 text-[rgba(240,236,228,0.45)]">{toDisplayDateDDMMYYYY(cert.date)}</p> : null}
+                        <Input
+                          type="date"
+                          value={toDateInput(cert.date)}
+                          onChange={(v) => updateCertification(idx, { date: v })}
+                        />
+                        {cert.date ? (
+                          <p className="text-[11px] mt-1 text-[rgba(240,236,228,0.45)]">
+                            {toDisplayDateDDMMYYYY(cert.date)}
+                          </p>
+                        ) : null}
                       </div>
                     </div>
 
                     {cert.image?.url ? (
                       <div className="mt-3 rounded-xl overflow-hidden border border-[rgba(240,236,228,0.08)]">
-                        <img src={cert.image.url} alt={cert.name || "Certificate"} className="w-full h-44 object-cover" />
+                        <img
+                          src={cert.image.url}
+                          alt={cert.name || "Certificate"}
+                          className="w-full h-44 object-cover"
+                        />
                       </div>
                     ) : null}
 
                     <div className="mt-3 flex justify-end">
-                      <button type="button" onClick={() => openConfirm({ title: "Remove certification?", description: "This certification entry will be permanently removed.", onConfirm: () => removeCertification(idx) })} className="text-[12px] text-red-400/80 hover:text-red-300">Remove</button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openConfirm({
+                            title: "Remove certification?",
+                            description: "This certification entry will be permanently removed.",
+                            onConfirm: () => removeCertification(idx),
+                          })
+                        }
+                        className="text-[12px] text-red-400/80 hover:text-red-300"
+                      >
+                        Remove
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -766,8 +951,17 @@ export default function ProfilePage() {
           <div className="xl:col-span-3">
             {formError ? <p className="text-[13px] text-red-400 mb-3">{formError}</p> : null}
             <div className="flex items-center justify-between pt-2">
-              <a href="/" className="text-[13px] tracking-[0.03em] text-[rgba(240,236,228,0.35)] no-underline transition-colors duration-200 hover:text-[rgba(240,236,228,0.7)]">Cancel</a>
-              <button type="submit" disabled={saving || !canSaveProfile} className="text-[13px] tracking-[0.04em] px-7 py-3 rounded-xl border border-[rgba(240,236,228,0.18)] bg-[rgba(240,236,228,0.1)] text-[#f0ece4] transition-all duration-200 hover:bg-[rgba(240,236,228,0.18)] hover:border-[rgba(240,236,228,0.28)] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_4px_16px_rgba(0,0,0,0.25)] disabled:opacity-60 disabled:cursor-not-allowed">
+              <a
+                href="/"
+                className="text-[13px] tracking-[0.03em] text-[rgba(240,236,228,0.35)] no-underline transition-colors duration-200 hover:text-[rgba(240,236,228,0.7)]"
+              >
+                Cancel
+              </a>
+              <button
+                type="submit"
+                disabled={saving || !canSaveProfile}
+                className="text-[13px] tracking-[0.04em] px-7 py-3 rounded-xl border border-[rgba(240,236,228,0.18)] bg-[rgba(240,236,228,0.1)] text-[#f0ece4] transition-all duration-200 hover:bg-[rgba(240,236,228,0.18)] hover:border-[rgba(240,236,228,0.28)] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_4px_16px_rgba(0,0,0,0.25)] disabled:opacity-60 disabled:cursor-not-allowed"
+              >
                 {saving ? "Saving..." : "Save Profile"}
               </button>
             </div>
@@ -777,7 +971,13 @@ export default function ProfilePage() {
 
       <Footer />
 
-      <ConfirmModal open={confirmState.open} title={confirmState.title} description={confirmState.description} onCancel={closeConfirm} onConfirm={handleConfirm} />
+      <ConfirmModal
+        open={confirmState.open}
+        title={confirmState.title}
+        description={confirmState.description}
+        onCancel={closeConfirm}
+        onConfirm={handleConfirm}
+      />
     </div>
   );
 }

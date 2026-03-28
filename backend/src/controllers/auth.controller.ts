@@ -376,3 +376,19 @@ export const updateProfile = asyncHandler(async (req, res) => {
     data: user,
   });
 });
+
+export const getUserByUsername = asyncHandler(async (req, res) => {
+  const { username } = req.params;
+    
+  const user = await User.findOne({ username }).select("-password");
+
+  if (!user) {
+    throwError(404, "User not found");
+    return;
+  } else {
+    return sendResponse(res, 200, {
+      message: "User profile fetched successfully",
+      data: user,
+    });
+  }
+});
